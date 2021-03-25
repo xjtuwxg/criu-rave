@@ -2894,6 +2894,7 @@ static int prepare_mm(pid_t pid, struct task_restore_args *args)
 	}
 
 	exe_fd = open_reg_by_id(mm->exe_file_id);
+	pr_info("exe_fd: %d\n", exe_fd);
 	if (exe_fd < 0)
 		goto out;
 

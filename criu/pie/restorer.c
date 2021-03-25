@@ -725,6 +725,7 @@ static unsigned long restore_mapping(VmaEntry *vma_entry)
 	 * writable since we're going to restore page
 	 * contents.
 	 */
+	// TODO: Skip the mapping for .text section
 	addr = sys_mmap(decode_pointer(vma_entry->start),
 			vma_entry_len(vma_entry),
 			prot, flags,
@@ -1009,6 +1010,8 @@ static int vma_remap(VmaEntry *vma_entry, int uffd)
 	 * pages, so that the processes will hang until the memory is
 	 * injected via userfaultfd.
 	 */
+	// TODO: can potentially be a place where we enable uffd for randomizable
+	// pages (e.g. code and stack).
 	if (vma_entry_can_be_lazy(vma_entry))
 		if (enable_uffd(uffd, dst, len) != 0)
 			return -1;

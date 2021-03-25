@@ -128,6 +128,9 @@ bool should_dump_page(VmaEntry *vmae, u64 pme)
 	if ((pme & (PME_PRESENT | PME_SWAP)) && !__page_is_zero(pme))
 		return true;
 
+	// TODO: We want to explicitly NOT dump the .text section of the main
+	// binary. We won't need it since it's going to get read back in anyway
+
 	return false;
 }
 
@@ -1368,6 +1371,7 @@ int open_vmas(struct pstree_item *t)
 	int pid = vpid(t);
 	struct vma_area *vma;
 	struct vm_area_list *vmas = &rsti(t)->vmas;
+	MmEntry *mm = rsti(t)->mm;
 
 	filemap_ctx_init(false);
 
@@ -1382,6 +1386,28 @@ int open_vmas(struct pstree_item *t)
 		if (vma->vm_open(pid, vma)) {
 			pr_err("`- Can't open vma\n");
 			return -1;
+		}
+
+		/* We want to intercept the mapping for the text section of the
+		 * executable. So, we look for a file mapping which matches the text
+		 * section (executable, matches exe file id, start|end_code addresses
+		 * are within that section). */
+		if (vma_area_is(vma, VMA_AREA_REGULAR | VMA_FILE_PRIVATE) &&
+			vma->vmfd->id == mm->exe_file_id &&
+			(vma->e->prot & (PROT_READ | PROT_EXEC)) == (PROT_READ | PROT_EXEC) &&
+			in_vma_area(vma, mm->mm_start_code) &&
+			in_vma_area(vma, mm->mm_end_code))
+		{
+			pr_info("Found the .text section vma (fd = %ld)\n", vma->e->fd);
+
+			// TODO: pre-map randomized code pages somewhere in memory (as well
+			// as a transformed stack, can be zero for now, but we need to
+			// pre-map that region so we can remap it to the correct location in
+			// the restorer).
+			//
+			// In the restorer, we take these two regions and populate
+			// them/remap them to the correct addresses.
+			t->vma_text = vma;
 		}
 
 		/*

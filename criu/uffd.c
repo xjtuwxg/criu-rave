@@ -78,6 +78,10 @@ struct lazy_iov {
 	unsigned long img_start;	/* start address at the dump time */
 };
 
+// TODO: RAVE: temporary handler
+struct rave_handler {
+};
+
 struct lazy_pages_info {
 	int pid;
 	bool exited;
@@ -98,6 +102,9 @@ struct lazy_pages_info {
 
 	struct list_head l;
 
+	/* Container for rave-related tasks */
+	struct rave_handler rh;
+
 	unsigned long buf_size;
 	void *buf;
 };
@@ -113,6 +120,15 @@ static struct epoll_rfd lazy_sk_rfd;
 static int lazy_pages_sk_id = -1;
 
 static int handle_uffd_event(struct epoll_rfd *lpfd);
+
+// TODO: RAVE: temporary stub
+static int init_rave(struct rave_handler *rh,
+	const char *binary)
+{
+	pr_info("Initializing rave with binary %s\n", binary);
+	return 0;
+}
+// TODO: RAVE: end temorary stub
 
 static struct lazy_pages_info *lpi_init(void)
 {
@@ -691,7 +707,38 @@ static int collect_iovs(struct lazy_pages_info *lpi)
 	if (!mm)
 		return -1;
 
+	// TODO: RAVE: This should be a separate function
+	{
+		struct cr_img *img;
+		FileEntry *fe;
+		int ret;
+
+		img = open_image(CR_FD_FILES, O_RSTR, lpi->pid);
+		if (!img) lp_perror(lpi, "Cannot open reg files image\n");
+
+		ret = pb_read_one_eof(img, &fe, PB_FILE);
+		close_image(img);
+		if (ret == -1) lp_perror(lpi, "Cannot read from reg files image\n");
+
+		/* Loop until we find the exe file entry */
+		// TODO: RAVE: actually loop (I know the first entry is exe for testing,
+		// but really should loop */
+		if (fe->id != mm->exe_file_id) lp_perror(lpi, "Not exe file entry\n");
+
+		ret = init_rave(&lpi->rh, fe->reg->name);
+		if (ret == -1) lp_perror(lpi, "Could not init rave\n");
+
+		// TODO: RAVE: We can verify that rave matches the code section VMA in
+		// the while loop below
+	}
+
 	while (pr->advance(pr)) {
+		// TODO: RAVE: If it's the stack (regardless if it's lazy or not), we
+		// want to read that from the pages image.
+		//
+		// Also, we want to make sure we are reading from the exe file directly
+		// (criu shouldn't have the exe file stored in the snapshotted pages
+		// anyway).
 		if (!pagemap_lazy(pr->pe))
 			continue;
 
@@ -1174,6 +1221,10 @@ static int handle_page_fault(struct lazy_pages_info *lpi, struct uffd_msg *msg)
 	address = msg->arg.pagefault.address & ~(page_size() - 1);
 	lp_debug(lpi, "#PF at 0x%llx\n", address);
 
+	/* If this is a code page, then we handle separately */
+	// TODO: RAVE: Basically just call uffd_copy with the correct code page
+	// which rave loads into memory
+
 	if (is_page_queued(lpi, address))
 		return 0;
 
@@ -1254,6 +1305,12 @@ static void lazy_pages_summary(struct lazy_pages_info *lpi)
 #endif
 }
 
+// TODO: RAVE: Once all normal lazy pages have been served, switch to a
+// different handle_requests-like function so we can continue handling
+// rave-related tasks
+// TODO: RAVE: Make sure we don't prematurely exit (i.e. instead of just
+// checking if any iov's are left, we need to make sure we served out code
+// pages).
 static int handle_requests(int epollfd, struct epoll_event *events, int nr_fds)
 {
 	struct lazy_pages_info *lpi, *n;
@@ -1285,6 +1342,8 @@ static int handle_requests(int epollfd, struct epoll_event *events, int nr_fds)
 				break;
 			}
 
+			// TODO: RAVE: for continuous randomization, move the lpi to a new
+			// list for handling rave requests
 			if (list_empty(&lpi->reqs)) {
 				lazy_pages_summary(lpi);
 				list_del(&lpi->l);
@@ -1419,12 +1478,16 @@ close_uffd:
 	return -1;
 }
 
-int cr_lazy_pages(bool daemon)
+int cr_lazy_pages(bool daemon, bool rave)
 {
 	struct epoll_event *events = NULL;
 	int nr_fds;
 	int lazy_sk;
 	int ret;
+
+	if (rave) {
+		pr_info("Runnning lazy pages with rave\n");
+	}
 
 	if (!kdat.has_uffd)
 		return -1;

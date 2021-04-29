@@ -541,6 +541,7 @@ int parse_options(int argc, char **argv, bool *usage_error,
 		{ "cgroup-yard",		required_argument,	0, 1096 },
 		{ "pre-dump-mode",		required_argument,	0, 1097},
 		{ "file-validation",		required_argument,	0, 1098	},
+		{ "rave",			no_argument,		0, 1099 },
 		{ },
 	};
 
@@ -778,6 +779,10 @@ int parse_options(int argc, char **argv, bool *usage_error,
 		case 1072:
 			opts.timeout = atoi(optarg);
 			break;
+		case 1099:
+			/* Setting rave requires lazy pages to be active */
+			pr_warn("Turning on rave requires activating lazy pages\n");
+			opts.rave = true;
 		case 1076:
 			opts.lazy_pages = true;
 			break;

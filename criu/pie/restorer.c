@@ -1010,8 +1010,7 @@ static int vma_remap(VmaEntry *vma_entry, int uffd)
 	 * pages, so that the processes will hang until the memory is
 	 * injected via userfaultfd.
 	 */
-	// TODO: can potentially be a place where we enable uffd for randomizable
-	// pages (e.g. code and stack).
+	// TODO: mark the text section as something that can be lazy
 	if (vma_entry_can_be_lazy(vma_entry))
 		if (enable_uffd(uffd, dst, len) != 0)
 			return -1;

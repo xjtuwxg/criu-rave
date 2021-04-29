@@ -148,6 +148,7 @@ struct cr_options {
 	unsigned int		empty_ns;
 	int			tcp_skip_in_flight;
 	bool			lazy_pages;
+	bool			rave;
 	char			*work_dir;
 
 	/*

@@ -1400,13 +1400,8 @@ int open_vmas(struct pstree_item *t)
 		{
 			pr_info("Found the .text section vma (fd = %ld)\n", vma->e->fd);
 
-			// TODO: pre-map randomized code pages somewhere in memory (as well
-			// as a transformed stack, can be zero for now, but we need to
-			// pre-map that region so we can remap it to the correct location in
-			// the restorer).
-			//
-			// In the restorer, we take these two regions and populate
-			// them/remap them to the correct addresses.
+			// TODO: RAVE: The restorer should create the mapping, then drop the
+			// pages with madvise (and register with uffd).
 			t->vma_text = vma;
 		}
 

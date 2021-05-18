@@ -29,6 +29,7 @@ CFLAGS			+= -iquote $(ARCH_DIR)/include
 CFLAGS			+= -iquote .
 CFLAGS			+= $(shell pkg-config --cflags libnl-3.0)
 CFLAGS			+= $(CONFIG-DEFINES)
+CFLAGS			+= -Irave/include
 
 ifeq ($(GMON),1)
 	CFLAGS		+= -pg
@@ -83,9 +84,10 @@ $(obj)/Makefile.packages: ;
 $(obj)/%: pie
 	$(Q) $(MAKE) $(call build-as,Makefile.crtools,criu) $@
 
+RAVE_LIBS := -Lrave/build/lib -lrave -lelf -lz
 $(obj)/criu: $(PROGRAM-BUILTINS)
 	$(call msg-link, $@)
-	$(Q) $(CC) $(CFLAGS) $^ $(LIBS) $(WRAPFLAGS) $(LDFLAGS) $(GMONLDOPT) -rdynamic -o $@
+	$(Q) $(CC) $(CFLAGS) $^ $(LIBS) $(RAVE_LIBS) $(WRAPFLAGS) $(LDFLAGS) $(GMONLDOPT) -rdynamic -o $@
 
 
 #

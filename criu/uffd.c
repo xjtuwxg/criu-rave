@@ -41,6 +41,7 @@
 #include "fdstore.h"
 #include "util.h"
 #include "namespaces.h"
+#include <rave.h>
 
 #undef  LOG_PREFIX
 #define LOG_PREFIX "uffd: "
@@ -78,10 +79,6 @@ struct lazy_iov {
 	unsigned long img_start;	/* start address at the dump time */
 };
 
-// TODO: RAVE: temporary handler
-struct rave_handler {
-};
-
 struct lazy_pages_info {
 	int pid;
 	bool exited;
@@ -103,7 +100,7 @@ struct lazy_pages_info {
 	struct list_head l;
 
 	/* Container for rave-related tasks */
-	struct rave_handler rh;
+	rave_handle_t *rh;
 
 	unsigned long buf_size;
 	void *buf;
@@ -121,15 +118,6 @@ static int lazy_pages_sk_id = -1;
 
 static int handle_uffd_event(struct epoll_rfd *lpfd);
 
-// TODO: RAVE: temporary stub
-static int init_rave(struct rave_handler *rh,
-	const char *binary)
-{
-	pr_info("Initializing rave with binary %s\n", binary);
-	return 0;
-}
-// TODO: RAVE: end temorary stub
-
 static struct lazy_pages_info *lpi_init(void)
 {
 	struct lazy_pages_info *lpi = NULL;
@@ -145,6 +133,10 @@ static struct lazy_pages_info *lpi_init(void)
 	lpi->lpfd.read_event = handle_uffd_event;
 	lpi->xfer_len = DEFAULT_XFER_LEN;
 	lpi->ref_cnt = 1;
+
+	lpi->rh = xmalloc(rave_handle_size());
+	if (!lpi->rh)
+		pr_perror("No mem for rave handle\n");
 
 	return lpi;
 }
@@ -190,6 +182,11 @@ static void lpi_fini(struct lazy_pages_info *lpi)
 		lpi_put(lpi->parent);
 	if (!lpi->parent && lpi->pr.close)
 		lpi->pr.close(&lpi->pr);
+
+	// TODO: for continuous, we can't free here
+	rave_close(lpi->rh);
+	xfree(lpi->rh);
+
 	xfree(lpi);
 }
 
@@ -725,7 +722,7 @@ static int collect_iovs(struct lazy_pages_info *lpi)
 		// but really should loop */
 		if (fe->id != mm->exe_file_id) lp_perror(lpi, "Not exe file entry\n");
 
-		ret = init_rave(&lpi->rh, fe->reg->name);
+		ret = rave_init(lpi->rh, fe->reg->name);
 		if (ret == -1) lp_perror(lpi, "Could not init rave\n");
 
 		// TODO: RAVE: We can verify that rave matches the code section VMA in
@@ -1342,8 +1339,8 @@ static int handle_requests(int epollfd, struct epoll_event *events, int nr_fds)
 				break;
 			}
 
-			// TODO: RAVE: for continuous randomization, move the lpi to a new
-			// list for handling rave requests
+			// TODO: RAVE: for continuous randomization, move the handle to a
+			// new list.
 			if (list_empty(&lpi->reqs)) {
 				lazy_pages_summary(lpi);
 				list_del(&lpi->l);

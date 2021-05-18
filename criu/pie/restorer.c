@@ -1011,9 +1011,10 @@ static int vma_remap(VmaEntry *vma_entry, int uffd)
 	 * injected via userfaultfd.
 	 */
 	// TODO: mark the text section as something that can be lazy
-	if (vma_entry_can_be_lazy(vma_entry))
+	if (vma_entry_can_be_lazy(vma_entry)) {
 		if (enable_uffd(uffd, dst, len) != 0)
 			return -1;
+	}
 
 	return 0;
 }

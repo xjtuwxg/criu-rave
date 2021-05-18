@@ -1,0 +1,3 @@
+[submodule "rave"]
+	path = rave
+	url = git@github.com:chris-blackburn/librave.git

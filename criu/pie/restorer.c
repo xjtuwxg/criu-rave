@@ -725,7 +725,6 @@ static unsigned long restore_mapping(VmaEntry *vma_entry)
 	 * writable since we're going to restore page
 	 * contents.
 	 */
-	// TODO: Skip the mapping for .text section
 	addr = sys_mmap(decode_pointer(vma_entry->start),
 			vma_entry_len(vma_entry),
 			prot, flags,
@@ -1010,11 +1009,9 @@ static int vma_remap(VmaEntry *vma_entry, int uffd)
 	 * pages, so that the processes will hang until the memory is
 	 * injected via userfaultfd.
 	 */
-	// TODO: mark the text section as something that can be lazy
-	if (vma_entry_can_be_lazy(vma_entry)) {
+	if (vma_entry_can_be_lazy(vma_entry))
 		if (enable_uffd(uffd, dst, len) != 0)
 			return -1;
-	}
 
 	return 0;
 }
@@ -1383,6 +1380,46 @@ int cleanup_current_inotify_events(struct task_restore_args *task_args)
 	return 0;
 }
 
+static int vma_prepare_rave(VmaEntry *vma_entry, int uffd)
+{
+	unsigned long dst = vma_entry->start;
+	unsigned long len = vma_entry_len(vma_entry);
+	unsigned long m, tmp;
+
+	if (!vma_entry_is(vma_entry, VMA_AREA_RAVE)) {
+		return 0;
+	}
+
+	/* For rave, once the text section is remapped, we have to mmap again to
+	 * morph it into an anonymous mapping (for use with userfaultfd). */
+	tmp = sys_mmap((void *)dst, len, vma_entry->prot,
+		vma_entry->flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+	if (tmp != dst) {
+		pr_err("Unable to replace mapping %lx for rave\n", dst);
+		return -1;
+	}
+
+	/* Once they are mapped, we want to drop them so we trigger a page
+	 * fault. */
+	m = MADV_DONTNEED;
+	tmp = sys_madvise(vma_entry->start,
+			  vma_entry_len(vma_entry),
+			  m);
+	if (tmp) {
+		pr_err("madvise(%"PRIx64", %"PRIu64", %ld) "
+			   "failed with %ld\n",
+			vma_entry->start,
+			vma_entry_len(vma_entry),
+			m, tmp);
+		return -1;
+	}
+
+	if (enable_uffd(uffd, dst, len) != 0)
+		return -1;
+
+	return 0;
+}
+
 /*
  * The main routine to restore task via sigreturn.
  * This one is very special, we never return there
@@ -1524,14 +1561,6 @@ long __export_restore_task(struct task_restore_args *args)
 				goto core_restore_end;
 			}
 		}
-
-		pr_debug("lazy-pages: closing uffd %d\n", args->uffd);
-		/*
-		 * All userfaultfd configuration has finished at this point.
-		 * Let's close the UFFD file descriptor, so that the restored
-		 * process does not have an opened UFFD FD for ever.
-		 */
-		sys_close(args->uffd);
 	}
 
 	/*
@@ -1650,11 +1679,19 @@ long __export_restore_task(struct task_restore_args *args)
 
 	/*
 	 * Finally restore madivse() bits
+	 *
+	 * We can also now prepare rave mappings (vdso proxify would fail since we
+	 * mess with the loaded text section of the binary).
 	 */
 	for (i = 0; i < args->vmas_n; i++) {
 		unsigned long m;
 
 		vma_entry = args->vmas + i;
+
+		if (vma_entry_is(vma_entry, VMA_AREA_RAVE)) {
+			vma_prepare_rave(vma_entry, args->uffd);
+		}
+
 		if (!vma_entry->has_madv || !vma_entry->madv)
 			continue;
 
@@ -1673,6 +1710,17 @@ long __export_restore_task(struct task_restore_args *args)
 				}
 			}
 		}
+	}
+
+	if (args->uffd > -1) {
+		pr_debug("lazy-pages: closing uffd %d\n", args->uffd);
+
+		/*
+		 * All userfaultfd configuration has finished at this point.
+		 * Let's close the UFFD file descriptor, so that the restored
+		 * process does not have an opened UFFD FD for ever.
+		 */
+		sys_close(args->uffd);
 	}
 
 	/*

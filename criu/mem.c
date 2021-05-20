@@ -842,6 +842,7 @@ static int premap_private_vma(struct pstree_item *t, struct vma_area *vma, void 
 	int ret;
 	void *addr;
 	unsigned long nr_pages, size;
+	MmEntry *mm = rsti(t)->mm;
 
 	nr_pages = vma_entry_len(vma->e) / PAGE_SIZE;
 	vma->page_bitmap = xzalloc(BITS_TO_LONGS(nr_pages) * sizeof(long));
@@ -919,6 +920,12 @@ static int premap_private_vma(struct pstree_item *t, struct vma_area *vma, void 
 	vma->premmaped_addr = (unsigned long) addr;
 	pr_debug("\tpremap %#016"PRIx64"-%#016"PRIx64" -> %016lx\n",
 		vma->e->start, vma->e->end, (unsigned long)addr);
+
+	if (opts.rave && in_vma_area(vma, mm->mm_start_code)) {
+		pr_debug("\tMarked for rave: %#016"PRIx64"-%#016"PRIx64" -> %016lx\n",
+			vma->e->start, vma->e->end, (unsigned long)addr);
+		vma->e->status |= VMA_AREA_RAVE;
+	}
 
 	if (vma_has_guard_gap_hidden(vma)) { /* Skip guard page */
 		vma->e->start += PAGE_SIZE;
@@ -1095,6 +1102,19 @@ static int restore_priv_vma_content(struct pstree_item *t, struct page_read *pr)
 				pr_err("Trying to restore page for non-private VMA\n");
 				goto err_addr;
 			}
+
+			/* If the area is marked for rave, userfaultfd will be used to load
+			 * these pages from the rave runtime. */
+			//if (opts.rave && vma_area_is(vma, VMA_AREA_RAVE)) {
+			//	unsigned long len = min_t(unsigned long,
+			//			(nr_pages - i) * PAGE_SIZE,
+			//			vma->e->end - va);
+			//	len >>= PAGE_SHIFT;
+
+			//	pr_debug("Rave restore skips %ld pages at %lx\n", len, va);
+			//	nr_lazy += len;
+			//	continue;
+			//}
 
 			if (!vma_area_is(vma, VMA_PREMMAPED)) {
 				unsigned long len = min_t(unsigned long,
@@ -1371,7 +1391,6 @@ int open_vmas(struct pstree_item *t)
 	int pid = vpid(t);
 	struct vma_area *vma;
 	struct vm_area_list *vmas = &rsti(t)->vmas;
-	MmEntry *mm = rsti(t)->mm;
 
 	filemap_ctx_init(false);
 
@@ -1386,23 +1405,6 @@ int open_vmas(struct pstree_item *t)
 		if (vma->vm_open(pid, vma)) {
 			pr_err("`- Can't open vma\n");
 			return -1;
-		}
-
-		/* We want to intercept the mapping for the text section of the
-		 * executable. So, we look for a file mapping which matches the text
-		 * section (executable, matches exe file id, start|end_code addresses
-		 * are within that section). */
-		if (vma_area_is(vma, VMA_AREA_REGULAR | VMA_FILE_PRIVATE) &&
-			vma->vmfd->id == mm->exe_file_id &&
-			(vma->e->prot & (PROT_READ | PROT_EXEC)) == (PROT_READ | PROT_EXEC) &&
-			in_vma_area(vma, mm->mm_start_code) &&
-			in_vma_area(vma, mm->mm_end_code))
-		{
-			pr_info("Found the .text section vma (fd = %ld)\n", vma->e->fd);
-
-			// TODO: RAVE: The restorer should create the mapping, then drop the
-			// pages with madvise (and register with uffd).
-			t->vma_text = vma;
 		}
 
 		/*

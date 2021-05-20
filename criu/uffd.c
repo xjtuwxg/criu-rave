@@ -1212,15 +1212,32 @@ static int handle_page_fault(struct lazy_pages_info *lpi, struct uffd_msg *msg)
 {
 	struct lazy_iov *iov;
 	__u64 address;
+	int nr_pages;
 	int ret;
 
 	/* Align requested address to the next page boundary */
 	address = msg->arg.pagefault.address & ~(page_size() - 1);
 	lp_debug(lpi, "#PF at 0x%llx\n", address);
 
-	/* If this is a code page, then we handle separately */
-	// TODO: RAVE: Basically just call uffd_copy with the correct code page
-	// which rave loads into memory
+	/* If this is a code page, then we handle separately with rave */
+	if (opts.rave) {
+		lpi->buf = rave_handle_fault(lpi->rh, address);
+
+		if (lpi->buf) {
+			nr_pages = 1;
+			ret = uffd_copy(lpi, address, &nr_pages);
+			if (ret < 0)
+				return ret;
+
+			/* recheck if the process exited, it may be detected in uffd_copy */
+			if (lpi->exited) {
+				// TODO: may have to unload here, but not sure yet
+				return 0;
+			}
+
+			return 0;
+		}
+	}
 
 	if (is_page_queued(lpi, address))
 		return 0;
@@ -1475,14 +1492,14 @@ close_uffd:
 	return -1;
 }
 
-int cr_lazy_pages(bool daemon, bool rave)
+int cr_lazy_pages(bool daemon)
 {
 	struct epoll_event *events = NULL;
 	int nr_fds;
 	int lazy_sk;
 	int ret;
 
-	if (rave) {
+	if (opts.rave) {
 		pr_info("Runnning lazy pages with rave\n");
 	}
 

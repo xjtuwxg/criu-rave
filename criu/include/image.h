@@ -60,6 +60,10 @@
  *  	memory map for socket
  *  - AIO ring
  *  	memory area serves AIO buffers
+ *  - RAVE
+ *  	Memory expected to come from a rave runtime. This flag is not stored
+ *  	with images, but rather added during restore as vma's are being
+ *  	initialized.
  *  - unsupported
  *  	stands for any unknown memory areas, usually means
  *  	we don't know how to work with it and should stop
@@ -85,6 +89,7 @@
 #define VMA_AREA_AIORING	(1 <<  13)
 #define VMA_AREA_MEMFD		(1 <<  14)
 
+#define VMA_AREA_RAVE		(1 <<  27)
 #define VMA_CLOSE		(1 <<  28)
 #define VMA_NO_PROT_WRITE	(1 <<  29)
 #define VMA_PREMMAPED		(1 <<  30)

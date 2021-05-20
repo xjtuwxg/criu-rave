@@ -17,8 +17,6 @@ struct pstree_item {
 	struct list_head	children;	/* list of my children */
 	struct list_head	sibling;	/* linkage in my parent's children list */
 
-	struct vma_area *vma_text;
-
 	struct pid		*pid;
 	pid_t			pgid;
 	pid_t			sid;

@@ -1392,8 +1392,9 @@ static int vma_prepare_rave(VmaEntry *vma_entry, int uffd)
 
 	/* For rave, once the text section is remapped, we have to mmap again to
 	 * morph it into an anonymous mapping (for use with userfaultfd). */
+	// TODO: For the stack, we also need to map as growsdown
 	tmp = sys_mmap((void *)dst, len, vma_entry->prot,
-		vma_entry->flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+		MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
 	if (tmp != dst) {
 		pr_err("Unable to replace mapping %lx for rave\n", dst);
 		return -1;

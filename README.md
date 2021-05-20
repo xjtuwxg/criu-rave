@@ -61,6 +61,20 @@ One of the CRIU features is the ability to save and restore state of a TCP socke
 without breaking the connection. This functionality is considered to be useful by
 itself, and we have it available as the [libsoccr library](https://criu.org/Libsoccr).
 
+### Building with librave
+
+This version of criu was created to integrate with
+[librave](https://github.com/chris-blackburn/librave/tree/master) - a library
+built to assist in the randomization of migrated processes. In order to build
+criu-rave, you must first include and build librave:
+* `git submodule update --init --progress`
+* `cd rave`
+* `cmake -B build`
+* `cd build`
+* `make`
+
+Then, you can follow criu's normal build system (just run `make`).
+
 ## Licence
 
 The project is licensed under GPLv2 (though files sitting in the lib/ directory are LGPLv2.1).

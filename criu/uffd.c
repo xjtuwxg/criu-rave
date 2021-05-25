@@ -136,7 +136,7 @@ static struct lazy_pages_info *lpi_init(void)
 
 	lpi->rh = xmalloc(rave_handle_size());
 	if (!lpi->rh)
-		pr_perror("No mem for rave handle\n");
+		return NULL;
 
 	return lpi;
 }
@@ -1065,6 +1065,13 @@ static int xfer_pages(struct lazy_pages_info *lpi)
 	unsigned long len;
 	int err;
 
+	// TODO: This is a bandage right now since I'm trying to force page faults
+	// instead of offloading everything before the restoree has a change to
+	// touch dropped code pages. With this, we wait for page faults, but the
+	// program never exits - I'll eventually need to make rave continue running
+	// after lazy pages have been served.
+	return 1;
+
 	iov = pick_next_range(lpi);
 	if (!iov)
 		return 0;
@@ -1212,27 +1219,34 @@ static int handle_page_fault(struct lazy_pages_info *lpi, struct uffd_msg *msg)
 {
 	struct lazy_iov *iov;
 	__u64 address;
-	int nr_pages;
 	int ret;
 
 	/* Align requested address to the next page boundary */
 	address = msg->arg.pagefault.address & ~(page_size() - 1);
 	lp_debug(lpi, "#PF at 0x%llx\n", address);
 
-	/* If this is a code page, then we handle separately with rave */
+	/* Check if this fault is handled by rave */
 	if (opts.rave) {
-		lpi->buf = rave_handle_fault(lpi->rh, address);
+		int nr_pages = 1;
+		void *buf = rave_handle_fault(lpi->rh, address);
 
-		if (lpi->buf) {
-			nr_pages = 1;
+		if (buf) {
+			/* Need to make sure we don't lose the originally allocated buffer
+			 * (don't want to use it with rave since it adds an unnecessary copy
+			 * step) */
+			void *_old = lpi->buf;
+			lpi->buf = buf;
 			ret = uffd_copy(lpi, address, &nr_pages);
-			if (ret < 0)
-				return ret;
+			lpi->buf = _old;
+
+			if (ret < 0) {
+				lp_err(lpi, "Error during rave page copy\n");
+				return -1;
+			}
 
 			/* recheck if the process exited, it may be detected in uffd_copy */
 			if (lpi->exited) {
 				// TODO: may have to unload here, but not sure yet
-				return 0;
 			}
 
 			return 0;
@@ -1356,8 +1370,6 @@ static int handle_requests(int epollfd, struct epoll_event *events, int nr_fds)
 				break;
 			}
 
-			// TODO: RAVE: for continuous randomization, move the handle to a
-			// new list.
 			if (list_empty(&lpi->reqs)) {
 				lazy_pages_summary(lpi);
 				list_del(&lpi->l);
@@ -1368,6 +1380,9 @@ static int handle_requests(int epollfd, struct epoll_event *events, int nr_fds)
 		if (list_empty(&lpis))
 			break;
 	}
+
+	// TODO: RAVE: for continuous randomization, move the handle to a
+	// new list.
 
 out:
 	return ret;

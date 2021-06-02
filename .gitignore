@@ -43,3 +43,5 @@ compel/include/asm
 include/common/asm
 include/common/config.h
 build/
+test/rave/loop
+vanilla-dump

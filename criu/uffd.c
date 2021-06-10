@@ -100,7 +100,7 @@ struct lazy_pages_info {
 	struct list_head l;
 
 	/* Container for rave-related tasks */
-	rave_handle_t *rh;
+	rave_handle_t rh;
 
 	unsigned long buf_size;
 	void *buf;
@@ -134,7 +134,7 @@ static struct lazy_pages_info *lpi_init(void)
 	lpi->xfer_len = DEFAULT_XFER_LEN;
 	lpi->ref_cnt = 1;
 
-	lpi->rh = xmalloc(rave_handle_size());
+	lpi->rh = rave_create();
 	if (!lpi->rh)
 		return NULL;
 
@@ -185,7 +185,7 @@ static void lpi_fini(struct lazy_pages_info *lpi)
 
 	// TODO: for continuous, we can't free here
 	rave_close(lpi->rh);
-	xfree(lpi->rh);
+	rave_destroy(lpi->rh);
 
 	xfree(lpi);
 }
@@ -705,7 +705,7 @@ static int collect_iovs(struct lazy_pages_info *lpi)
 		return -1;
 
 	// TODO: RAVE: This should be a separate function
-	{
+	if (opts.rave) {
 		struct cr_img *img;
 		FileEntry *fe;
 		int ret;
@@ -723,10 +723,21 @@ static int collect_iovs(struct lazy_pages_info *lpi)
 		if (fe->id != mm->exe_file_id) lp_perror(lpi, "Not exe file entry\n");
 
 		ret = rave_init(lpi->rh, fe->reg->name);
-		if (ret == -1) lp_perror(lpi, "Could not init rave\n");
+		if (ret < 0) lp_perror(lpi, "Could not init rave\n");
 
-		// TODO: RAVE: We can verify that rave matches the code section VMA in
-		// the while loop below
+		/* It's possible that the executable segment could be loaded to a
+		 * separate address (not matching the elf). We need to grab the correct
+		 * address. */
+		for (; n_vma < mm->n_vmas; n_vma++) {
+			VmaEntry *vma = mm->vmas[n_vma];
+
+			if (mm->mm_start_code >= vma->start &&
+				mm->mm_start_code < vma->end) {
+				lp_debug(lpi, "rave: relocating to %"PRIx64"\n", vma->start);
+				rave_relocate(lpi->rh, vma->start);
+				break;
+			}
+		}
 	}
 
 	while (pr->advance(pr)) {

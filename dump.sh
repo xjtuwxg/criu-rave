@@ -10,5 +10,6 @@ mkdir -p vanilla-dump
 rm vanilla-dump/* -rf
 
 # Run criu dump and change the dump image ownership
-sudo ./criu/criu dump -D vanilla-dump -j -t $(pidof $1)
+sudo LD_LIBRARY_PATH=./rave/build/lib/ ./criu/criu dump -D vanilla-dump -j \
+	-t $(pidof $1)
 sudo chown $USER:$(id -gn) vanilla-dump -R

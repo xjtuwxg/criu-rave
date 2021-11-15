@@ -84,7 +84,7 @@ $(obj)/Makefile.packages: ;
 $(obj)/%: pie
 	$(Q) $(MAKE) $(call build-as,Makefile.crtools,criu) $@
 
-RAVE_LIBS := -Lrave/build/lib -lrave -lelf -lz
+RAVE_LIBS := -L./rave/build/lib -lrave
 $(obj)/criu: $(PROGRAM-BUILTINS)
 	$(call msg-link, $@)
 	$(Q) $(CC) $(CFLAGS) $^ $(LIBS) $(RAVE_LIBS) $(WRAPFLAGS) $(LDFLAGS) $(GMONLDOPT) -rdynamic -o $@

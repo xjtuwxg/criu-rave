@@ -1,80 +1,79 @@
-[![master](https://travis-ci.org/checkpoint-restore/criu.svg?branch=master)](https://travis-ci.org/checkpoint-restore/criu)
-[![development](https://travis-ci.org/checkpoint-restore/criu.svg?branch=criu-dev)](https://travis-ci.org/checkpoint-restore/criu)
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/55251ec7db28421da4481fc7c1cb0cee)](https://www.codacy.com/app/xemul/criu?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=xemul/criu&amp;utm_campaign=Badge_Grade)
-<p align="center"><img src="https://criu.org/w/images/1/1c/CRIU.svg" width="256px"/></p>
+RAVE: A modular and extensible framework for code and memory randomization
+===
+RAVE extends the [CRIU](https://criu.org/) project to checkpoint and restore a running process. During the restoration, RAVE re-randomizes the program by serving updated code and data pages using [CRIU lazy-pages](https://criu.org/Lazy_migration). Therefore, RAVE implements a moving target defense system in a distributed environment.
 
-## CRIU -- A project to implement checkpoint/restore functionality for Linux
+## Build RAVE
+Clone the source code of `CRIU-Rave` and update the git submodule (`librave`):
+```
+git clone -b rave https://github.com/chris-blackburn/criu-rave.git
+cd criu-rave
+git submodule update --init --progress
+```
+Download the DynamoRIO, unzip to `rave/deps` directory:
+```
+wget https://github.com/DynamoRIO/dynamorio/releases/download/release_8.0.0-1/DynamoRIO-Linux-8.0.0-1.tar.gz
+mkdir -p rave/deps
+tar xf DynamoRIO-Linux-8.0.0-1.tar.gz -C rave/deps
+mv rave/deps/DynamoRIO-Linux-8.0.0-1 rave/deps/DynamoRIO
+```
+Next, build `librave`:
+```
+cd rave
+cmake -B build
+make -C build
+```
+The last step is to build CRIU:
+```
+cd ..     # cd to the CRIU-Rave root dir
+make
+```
 
-CRIU (stands for Checkpoint and Restore in Userspace) is a utility to checkpoint/restore Linux tasks.
+## Running applications using RAVE
+### Start the application and checkpoint it
+Start the test application (in `test/rave/`):
+```
+❯ ./test/rave/loop -n 10
+pid: 210391, cnt: 10
+In function func_path_b.
+In function func_path_a.
+1 
+2 
+3 
+```
+In another terminal, checkpoint the `loop`:
+```
+❯ ./dump.sh loop
+Warn  (compel/arch/x86/src/lib/infect.c:281): Will restore 210391 with interrupted system call
+```
+By default, `./dump.sh` will checkpoint the process into the `vanilla-dump` directory.
 
-Using this tool, you can freeze a running application (or part of it) and checkpoint 
-it to a hard drive as a collection of files. You can then use the files to restore and run the
-application from the point it was frozen at. The distinctive feature of the CRIU
-project is that it is mainly implemented in user space. There are some more projects
-doing C/R for Linux, and so far CRIU [appears to be](https://criu.org/Comparison_to_other_CR_projects) 
-the most feature-rich and up-to-date with the kernel.
+### Restore the process (with randomized layout) using RAVE
+Now, start the `criu lazy-pages` daemon:
+```
+❯ sudo LD_LIBRARY_PATH=./rave/build/lib/ ./criu/criu lazy-pages -D vanilla-dump --rave
+```
 
-CRIU project is (almost) the never-ending story, because we have to always keep up with the
-Linux kernel supporting checkpoint and restore for all the features it provides. Thus we're
-looking for contributors of all kinds -- feedback, bug reports, testing, coding, writing, etc.
-Please refer to [CONTRIBUTING.md](CONTRIBUTING.md) if you would like to get involved.
+In another terminal, restore the `loop` process:
+```
+❯ sudo LD_LIBRARY_PATH=./rave/build/lib/ ./criu/criu restore -j -D vanilla-dump --lazy-pages --rave
+Warn  (criu/config.c:784): Turning on rave requires activating lazy pages
+4 
+5 
+Finish func_path_a.
+Finish func_path_b.
+main: Finish the loop...
+```
 
-The project [started](https://criu.org/History) as the way to do live migration for OpenVZ
-Linux containers, but later grew to more sophisticated and flexible tool. It is currently 
-used by (integrated into) OpenVZ, LXC/LXD, Docker, and other software, project gets tremendous 
-help from the community, and its packages are included into many Linux distributions.
+Some logs printed from the lazy-pages daemon:
+```
+❯ sudo LD_LIBRARY_PATH=./rave/build/lib/ ./criu/criu lazy-pages -D vanilla-dump --rave
+Warn  (criu/config.c:784): Turning on rave requires activating lazy pages
+[rave] DEBUG (rave_init:87) Intializing rave with binary: /home/xiaoguang/works/randomization/criu-rave/test/rave/loop
+[rave] DEBUG (binary_init:69) Initializing binary from file: /home/xiaoguang/works/randomization/criu-rave/test/rave/loop
+[rave] DEBUG (map_code_pages:62) Mapping segment
+[rave] DEBUG (map_code_pages:76) Locally loaded segment intended for: 401000 -> 497000 (150 pages)
+^C
+```
 
-The project home is at http://criu.org. This wiki contains all the knowledge base for CRIU we have.
-Pages worth starting with are:
-- [Installation instructions](http://criu.org/Installation)
-- [A simple example of usage](http://criu.org/Simple_loop)
-- [Examples of more advanced usage](https://criu.org/Category:HOWTO)
-- Troubleshooting can be hard, some help can be found [here](https://criu.org/When_C/R_fails), [here](https://criu.org/What_cannot_be_checkpointed) and [here](https://criu.org/FAQ)
-
-### Checkpoint and restore of simple loop process 
-[<p align="center"><img src="https://asciinema.org/a/232445.png" width="572px" height="412px"/></p>](https://asciinema.org/a/232445)
-
-## Advanced features
-
-As main usage for CRIU is live migration, there's a library for it called P.Haul. Also the
-project exposes two cool core features as standalone libraries. These are libcompel for parasite code 
-injection and libsoccr for TCP connections checkpoint-restore.
-
-### Live migration
-
-True [live migration](https://criu.org/Live_migration) using CRIU is possible, but doing
-all the steps by hands might be complicated. The [phaul sub-project](https://criu.org/P.Haul)
-provides a Go library that encapsulates most of the complexity. This library and the Go bindings
-for CRIU are stored in the [go-criu](https://github.com/checkpoint-restore/go-criu) repository.
-
-
-### Parasite code injection
-
-In order to get state of the running process CRIU needs to make this process execute
-some code, that would fetch the required information. To make this happen without
-killing the application itself, CRIU uses the [parasite code injection](https://criu.org/Parasite_code)
-technique, which is also available as a standalone library called [libcompel](https://criu.org/Compel).
-
-### TCP sockets checkpoint-restore
-
-One of the CRIU features is the ability to save and restore state of a TCP socket
-without breaking the connection. This functionality is considered to be useful by
-itself, and we have it available as the [libsoccr library](https://criu.org/Libsoccr).
-
-### Building with librave
-
-This version of criu was created to integrate with
-[librave](https://github.com/chris-blackburn/librave/tree/master) - a library
-built to assist in the randomization of migrated processes. In order to build
-criu-rave, you must first include and build librave:
-* `git submodule update --init --progress`
-* `cd rave`
-* `cmake -B build`
-* `cd build`
-* `make`
-
-Then, you can follow criu's normal build system (just run `make`).
-
-## Licence
-
-The project is licensed under GPLv2 (though files sitting in the lib/ directory are LGPLv2.1).
+## RAVE internal
+TODO: Add how rave parses function boundaries and serves the randomized prologues and epilogues.

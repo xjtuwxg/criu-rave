@@ -46,3 +46,4 @@ build/
 test/rave/loop
 vanilla-dump
 DynamoRIO-Linux-8.0.0-1.tar.gz
+.history/

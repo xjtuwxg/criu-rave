@@ -5,27 +5,27 @@ RAVE extends the [CRIU](https://criu.org/) project to checkpoint and restore a r
 ## Build RAVE
 Clone the source code of `CRIU-Rave` and update the git submodule (`librave`):
 ```
-git clone -b rave https://github.com/chris-blackburn/criu-rave.git
+git clone -b rave https://github.com/ssrg-vt/criu-rave.git
 cd criu-rave
 git submodule update --init --progress
 ```
 Download the DynamoRIO, unzip to `rave/deps` directory:
 ```
 wget https://github.com/DynamoRIO/dynamorio/releases/download/release_8.0.0-1/DynamoRIO-Linux-8.0.0-1.tar.gz
-mkdir -p rave/deps
-tar xf DynamoRIO-Linux-8.0.0-1.tar.gz -C rave/deps
-mv rave/deps/DynamoRIO-Linux-8.0.0-1 rave/deps/DynamoRIO
+mkdir -p librave/deps
+tar xf DynamoRIO-Linux-8.0.0-1.tar.gz -C librave/deps
+mv librave/deps/DynamoRIO-Linux-8.0.0-1 librave/deps/DynamoRIO
 ```
 Next, build `librave`:
 ```
-cd rave
+pushd librave
 cmake -B build
 make -C build
+popd
 ```
 The last step is to build CRIU:
 ```
-cd ..     # cd to the CRIU-Rave root dir
-make
+make    # build under the CRIU-Rave root directory
 ```
 
 ## Running applications using RAVE
@@ -50,12 +50,12 @@ By default, `./dump.sh` will checkpoint the process into the `vanilla-dump` dire
 ### Restore the process (with randomized layout) using RAVE
 Now, start the `criu lazy-pages` daemon:
 ```
-❯ sudo LD_LIBRARY_PATH=./rave/build/lib/ ./criu/criu lazy-pages -D vanilla-dump --rave
+❯ sudo LD_LIBRARY_PATH=./librave/build/lib/ ./criu/criu lazy-pages -D vanilla-dump --rave
 ```
 
 In another terminal, restore the `loop` process:
 ```
-❯ sudo LD_LIBRARY_PATH=./rave/build/lib/ ./criu/criu restore -j -D vanilla-dump --lazy-pages --rave
+❯ sudo LD_LIBRARY_PATH=./librave/build/lib/ ./criu/criu restore -j -D vanilla-dump --lazy-pages --rave
 Warn  (criu/config.c:784): Turning on rave requires activating lazy pages
 4 
 5 
@@ -66,7 +66,7 @@ main: Finish the loop...
 
 Some logs printed from the lazy-pages daemon:
 ```
-❯ sudo LD_LIBRARY_PATH=./rave/build/lib/ ./criu/criu lazy-pages -D vanilla-dump --rave
+❯ sudo LD_LIBRARY_PATH=./librave/build/lib/ ./criu/criu lazy-pages -D vanilla-dump --rave
 Warn  (criu/config.c:784): Turning on rave requires activating lazy pages
 [rave] DEBUG (rave_init:87) Intializing rave with binary: /home/xiaoguang/works/randomization/criu-rave/test/rave/loop
 [rave] DEBUG (binary_init:69) Initializing binary from file: /home/xiaoguang/works/randomization/criu-rave/test/rave/loop
